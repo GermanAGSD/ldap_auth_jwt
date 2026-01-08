@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  sse-api:
+  ldap_auth:
     build: .
     container_name: auth_ldap
     ports:
