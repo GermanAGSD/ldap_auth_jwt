@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  sse-api:
+    build: .
+    container_name: auth_ldap
+    ports:
+      - "8300:8300"
+    environment:
+      - TZ=Europe/Moscow
+    restart: unless-stopped
