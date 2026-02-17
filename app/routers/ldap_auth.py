@@ -30,22 +30,21 @@ refresh_tokens = {}
 @router.post("/login", response_model=schemas.Token)
 async def login_for_access_token(
         response: Response,
-        username: str = Form(...),
-        password: str = Form(...),
+        login_data: schemas.LoginRequest,  # Используем модель LoginRequest
         db: Session = Depends(database.get_db),
 ):
     # Подключение к LDAP серверу и проверка пользователя
     server = Server(LDAP_SERVER, get_info=ALL)
     conn = Connection(server, LDAP_BIND_DN, LDAP_PASSWORD, auto_bind=True)
 
-    search_filter = f"(sAMAccountName={username})"
+    search_filter = f"(sAMAccountName={login_data.username})"
     conn.search('DC=bull,DC=local', search_filter, SUBTREE, attributes=['cn', 'mail', 'memberOf'])
 
     if len(conn.entries) == 0:
         raise HTTPException(status_code=404, detail="User not found")
 
     user_dn = conn.entries[0].entry_dn
-    user_conn = Connection(server, user_dn, password, authentication=SIMPLE)
+    user_conn = Connection(server, user_dn, login_data.password, authentication=SIMPLE)
 
     if not user_conn.bind():
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -53,18 +52,20 @@ async def login_for_access_token(
     # Получение групп
     groups = conn.entries[0].memberOf.values if hasattr(conn.entries[0].memberOf, 'values') else []
 
-    # Создание токенов
-    access_token = create_token({"sub": username})  # Передаем username или user_id
-    refresh_token, refresh_hash, expires = create_refresh_token()
-
     # Используем 'Users' вместо 'User'
-    user = db.query(models.Users).filter(models.Users.email == username).first()
+    user = db.query(models.Users).filter(models.Users.email == login_data.username).first()
 
     if not user:
         # Если пользователя нет в базе, создаем нового
-        user = models.Users(name=username, email=username, domainpass=password)
+        user = models.Users(name=login_data.username, email=login_data.username, domainpass=login_data.password)
         db.add(user)
         db.commit()
+
+    # Генерация токенов с использованием user.id
+    # access_token = create_token({"sub": user.id})  # Здесь передаем user.id, а не username
+    access_token = create_token({"sub": user.id})  # Убедитесь, что sub - строка
+
+    refresh_token, refresh_hash, expires = create_refresh_token()
 
     # Добавляем группы пользователя в таблицу связи
     for group_dn in groups:
@@ -231,3 +232,9 @@ async def update_group_visibility(
     db.refresh(group)  # Обновляем объект группы, чтобы вернуть актуальные данные
 
     return group
+
+@router.get("/dashboard")
+async def get_dashboard(current_user: models.Users = Depends(get_current_user), db: Session = Depends(database.get_db)):
+    # Получаем группы текущего пользователя
+    groups = db.query(models.Group).join(models.UserGroupAssociation).filter(models.UserGroupAssociation.user_id == current_user.id).all()
+    return {"message": "Welcome to your dashboard", "groups": [group.name for group in groups]}

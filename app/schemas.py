@@ -50,3 +50,7 @@ class Group(BaseModel):
 
     class Config:
         orm_mode = True  # Это позволит Pydantic работать с объектами SQLAlchemy
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str

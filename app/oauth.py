@@ -21,14 +21,25 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 refresh_tokens = {}
 
-def create_token(data: dict):
-    if not isinstance(data, dict):
-        raise ValueError("Expected 'data' to be a dictionary")
+# def create_token(data: dict):
+#     if not isinstance(data, dict):
+#         raise ValueError("Expected 'data' to be a dictionary")
+#
+#     to_encode = data.copy()  # копируем данные для кодирования
+#     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+#     to_encode.update({'exp': expire})  # добавляем время истечения срока действия
+#     encode_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)  # создаём JWT токен
+#     return encode_jwt
 
-    to_encode = data.copy()  # копируем данные для кодирования
+def create_token(data: dict):
+    # Убедитесь, что в 'sub' всегда передается строка
+    if not isinstance(data.get("sub"), str):
+        data["sub"] = str(data["sub"])  # Преобразуем в строку, если это не строка
+
+    to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({'exp': expire})  # добавляем время истечения срока действия
-    encode_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)  # создаём JWT токен
+    to_encode.update({'exp': expire})
+    encode_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encode_jwt
 
 

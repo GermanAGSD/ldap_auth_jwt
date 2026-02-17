@@ -13,8 +13,18 @@ from passlib.context import CryptContext
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from app.routers import ldap_auth
 from app.database import engine
+from fastapi.middleware.cors import CORSMiddleware
+
 models.Base.metadata.create_all(bind=engine)
 app = FastAPI()
+# Настройка CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Укажите домены, которым разрешено отправлять запросы
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешить все методы
+    allow_headers=["*"],  # Разрешить все заголовки
+)
 
 # Для zabbix отслеживать жив ли сервер
 @app.get("/health",status_code=status.HTTP_200_OK)
