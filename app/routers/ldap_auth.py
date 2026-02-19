@@ -16,6 +16,7 @@ from app.settings import settings
 from app.utils import hash_password, verify_password
 from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from app.oauth import create_token, verify_access_token,get_current_user, create_refresh_token
+from typing import List
 router = APIRouter(
     # prefix="/posts",
     # tags=['Posts']
@@ -52,7 +53,6 @@ async def login_for_access_token(
     # Получение групп
     groups = conn.entries[0].memberOf.values if hasattr(conn.entries[0].memberOf, 'values') else []
 
-    # Используем 'Users' вместо 'User'
     user = db.query(models.Users).filter(models.Users.email == login_data.username).first()
 
     if not user:
@@ -106,7 +106,59 @@ async def login_for_access_token(
         "groups": groups,
     }
 
-
+# # Получение групп из LDAP (список DN)
+# ldap_group_dns = set(conn.entries[0].memberOf.values if hasattr(conn.entries[0].memberOf, 'values') else [])
+#
+# # Находим пользователя в БД (создаём при необходимости)
+# user = db.query(models.Users).filter(models.Users.email == login_data.username).first()
+# if not user:
+#     user = models.Users(name=login_data.username, email=login_data.username, domainpass=login_data.password)
+#     db.add(user)
+#     db.commit()
+#     db.refresh(user)
+#
+# # Получаем текущие связи пользователя с группами из БД
+# current_associations = db.query(models.UserGroupAssociation).filter(
+#     models.UserGroupAssociation.user_id == user.id
+# ).all()
+# current_group_ids = {a.group_id for a in current_associations}
+#
+# # Получаем группы из БД по их DN (чтобы можно было найти id)
+# groups_in_db = db.query(models.Group).filter(models.Group.name.in_(ldap_group_dns)).all()
+# group_name_to_id = {g.name: g.id for g in groups_in_db}
+#
+# # Множество id групп, которые уже есть в БД
+# existing_group_ids = set(group_name_to_id.values())
+#
+# # Множество групп, которых нет в БД (их нужно создать)
+# missing_groups = ldap_group_dns - set(group_name_to_id.keys())
+#
+# # Создаём недостающие группы
+# for dn in missing_groups:
+#     new_group = models.Group(name=dn, created_by=user.id)  # или None для created_by?
+#     db.add(new_group)
+#     db.flush()  # чтобы получить id
+#     group_name_to_id[dn] = new_group.id
+#     existing_group_ids.add(new_group.id)
+#
+# # Теперь у нас есть все id групп для всех DN из LDAP
+# target_group_ids = set(group_name_to_id[dn] for dn in ldap_group_dns)
+#
+# # Определяем, какие связи нужно добавить (группы есть в LDAP, но нет связи в БД)
+# to_add = target_group_ids - current_group_ids
+# for group_id in to_add:
+#     assoc = models.UserGroupAssociation(user_id=user.id, group_id=group_id)
+#     db.add(assoc)
+#
+# # Определяем, какие связи нужно удалить (группы есть в БД, но нет в LDAP)
+# to_remove = current_group_ids - target_group_ids
+# if to_remove:
+#     db.query(models.UserGroupAssociation).filter(
+#         models.UserGroupAssociation.user_id == user.id,
+#         models.UserGroupAssociation.group_id.in_(to_remove)
+#     ).delete(synchronize_session=False)
+#
+# db.commit()
 
 @router.post("/auth/refresh")
 def refresh_token(
@@ -210,6 +262,140 @@ async def get_visible_groups_by_user(user_id: int, db: Session = Depends(databas
         raise HTTPException(status_code=404, detail="No visible groups found for this user")
 
     return groups
+@router.get("/user/{user_id}/details", response_model=schemas.UserDetails)
+async def get_user_details(
+        user_id: int,
+        db: Session = Depends(database.get_db),
+        current_user: Users = Depends(get_current_user)
+):
+    # Проверяем, является ли текущий пользователь суперпользователем
+    if not current_user.issuperuser and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access other user's details")
+
+    # Получаем пользователя по user_id
+    user = db.query(models.Users).filter(models.Users.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Получаем все пароли этого пользователя
+    passwords = db.query(models.PasswordManager).filter(models.PasswordManager.created_by == user_id).all()
+
+    # Получаем все группы этого пользователя
+    groups = db.query(models.Group).join(models.UserGroupAssociation).filter(
+        models.UserGroupAssociation.user_id == user_id
+    ).all()
+
+    # Формируем данные для паролей
+    password_data = [
+        schemas.Password(
+            id=password.id,
+            password=password.password,
+            login_password=password.login_password,
+            description=password.description,
+            about_password=password.about_password,
+            created_by=password.created_by
+        )
+        for password in passwords
+    ]
+
+    # Формируем данные для групп
+    group_names = [group.name for group in groups]
+
+    # Возвращаем данные
+    return {
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "issuperuser": user.issuperuser,
+        "created_at": user.created_at.isoformat(),
+        "groups": group_names,
+        "passwords": password_data  # Передаем список объектов паролей
+    }
+@router.get("/all_passwords", response_model=List[schemas.Password])
+async def get_all_passwords(db: Session = Depends(database.get_db), current_user: Users = Depends(get_current_user)):
+    # Проверка прав суперпользователя
+    if not current_user.issuperuser:
+        raise HTTPException(status_code=403, detail="Not authorized to access all passwords")
+
+    # Получаем все пароли из БД
+    passwords = db.query(models.PasswordManager).all()
+
+    if not passwords:
+        raise HTTPException(status_code=404, detail="No passwords found")
+
+    # FastAPI автоматически преобразует ORM-объекты в Pydantic схемы, если в схеме настроено orm_mode = True
+    return passwords
+
+@router.get("/users", response_model=List[schemas.UserDetails])
+async def get_all_users(db: Session = Depends(database.get_db), current_user: Users = Depends(get_current_user)):
+    # Проверка прав суперпользователя для получения всех пользователей
+    if not current_user.issuperuser:
+        raise HTTPException(status_code=403, detail="Not authorized to access all users")
+
+    # Получаем всех пользователей
+    users = db.query(models.Users).all()
+
+    # Если пользователей нет, возвращаем ошибку
+    if not users:
+        raise HTTPException(status_code=404, detail="No users found")
+
+    # Формируем ответ для каждого пользователя
+    user_data = []
+    for user in users:
+        # Получаем все пароли для каждого пользователя
+        passwords = db.query(models.PasswordManager).filter(models.PasswordManager.created_by == user.id).all()
+        # Получаем все группы для каждого пользователя
+        # groups = db.query(models.Group).join(models.UserGroupAssociation).filter(models.UserGroupAssociation.user_id == user.id).all()
+        # Получаем ТОЛЬКО ВИДИМЫЕ группы для пользователя
+        # groups = db.query(models.Group).join(models.UserGroupAssociation).filter(
+        #     models.UserGroupAssociation.user_id == user.id,
+        #     models.Group.visible == True   # добавляем условие видимости
+        # ).all()
+        groups = db.query(models.Group).join(models.UserGroupAssociation).filter(
+            models.UserGroupAssociation.user_id == user.id
+        ).all()
+        # Формируем данные для паролей
+        password_data = [
+            schemas.Password(
+                id=password.id,
+                password=password.password,
+                login_password=password.login_password,
+                description=password.description,
+                about_password=password.about_password,
+                created_by=password.created_by
+            )
+            for password in passwords
+        ]
+
+        group_data = [
+            schemas.Group(
+                id=g.id,
+                name=g.name,
+                description=g.description,
+                created_by=g.created_by,
+                visible=g.visible
+            ) for g in groups
+        ]
+        # group_names = [group.name for group in groups]
+
+        # Добавляем пользователя в общий список
+        user_data.append(schemas.UserDetails(
+            user_id=user.id,
+            name=user.name,
+            email=user.email,
+            issuperuser=user.issuperuser,
+            created_at=user.created_at.isoformat(),
+            groups=group_data,
+            passwords=password_data
+        ))
+
+    return user_data
+
+@router.get("/current_user", response_model=schemas.UserDetails)
+async def get_current_user(current_user: Users = Depends(get_current_user)):
+    return current_user
+
 
 @router.put("/groups/{group_id}/visibility", response_model=schemas.Group)
 async def update_group_visibility(
@@ -224,8 +410,8 @@ async def update_group_visibility(
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
 
-    # Проверяем, что текущий пользователь является создателем группы или суперпользователем
-    if group.created_by != current_user.id:
+    # Разрешить, если пользователь создатель ИЛИ суперпользователь
+    if group.created_by != current_user.id and not current_user.issuperuser:
         raise HTTPException(status_code=403, detail="Not authorized to modify this group")
 
     # Обновляем поле visible

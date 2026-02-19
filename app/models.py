@@ -43,6 +43,6 @@ class PasswordManager(Base):
     about_password = Column(String, nullable=True)
     # Внешний ключ на пользователя, создавшего запись
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-
+    password_group = Column(Integer, ForeignKey('groups.id'), nullable=True)
     # Обратная связь
     creator = relationship("Users", back_populates="passwords")

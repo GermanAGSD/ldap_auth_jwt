@@ -37,8 +37,12 @@ class Password(BaseModel):
     about_password: Optional[str] = None
     created_by: int
 
+
     class Config:
         orm_mode = True
+
+class PasswordWithCreator(Password):
+    created_by_name: str
 
 # Схема для Group, которая будет использоваться для ответа
 class Group(BaseModel):
@@ -54,3 +58,18 @@ class Group(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class UserDetails(BaseModel):
+    user_id: int
+    name: str
+    email: str
+    issuperuser: bool
+    created_at: str
+    groups: List[Group]  # Список строк для групп
+    passwords: List[Password]  # Список строк для паролей
+
+    class Config:
+        orm_mode = True
+
+class GroupAll(BaseModel):
+    groups: List[Group]
