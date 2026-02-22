@@ -17,7 +17,9 @@ class TokenData(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
-    groups: List[str]
+    # groups: List[str]
+    refresh_token: str
+    issuperuser: bool
 
 class PasswordCreate(BaseModel):
     password: str
@@ -28,6 +30,26 @@ class PasswordCreate(BaseModel):
     class Config:
         orm_mode = True
 
+class UserPasswordCount(BaseModel):
+    user_id: int
+    count: int
+
+class PasswordPickItem(BaseModel):
+    id: int
+    description: Optional[str] = None
+    login_password: str
+    created_by: int
+    password_group: Optional[int] = None
+
+    class Config:
+        orm_mode = True
+
+class SharePasswordsUpdate(BaseModel):
+    password_ids: List[int]
+
+class SharePasswordsResult(BaseModel):
+    user_id: int
+    password_ids: List[int]
 
 class Password(BaseModel):
     id: int
@@ -41,35 +63,57 @@ class Password(BaseModel):
     class Config:
         orm_mode = True
 
-class PasswordWithCreator(Password):
-    created_by_name: str
-
-# Схема для Group, которая будет использоваться для ответа
-class Group(BaseModel):
-    id: int
-    name: str
-    description: Optional[str] = None
-    created_by: int
-    visible: bool
-
-    class Config:
-        orm_mode = True  # Это позволит Pydantic работать с объектами SQLAlchemy
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
 class UserDetails(BaseModel):
     user_id: int
     name: str
     email: str
     issuperuser: bool
-    created_at: str
-    groups: List[Group]  # Список строк для групп
-    passwords: List[Password]  # Список строк для паролей
+    created_at: datetime
+    groups: List[str]
+    passwords: List[Password]
 
     class Config:
         orm_mode = True
+
+class PasswordWithCreator(Password):
+    created_by_name: str
+
+class GroupWithCreator(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    creator_name: str   # новое поле – имя создателя
+    visible: bool
+
+    class Config:
+        orm_mode = True
+
+# Схема для Group, которая будет использоваться для ответа
+class Group(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    visible: bool
+    created_by: int | None = None
+
+    class Config:
+        orm_mode = True
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+# class UserDetails(BaseModel):
+#     user_id: int
+#     name: str
+#     email: str
+#     issuperuser: bool
+#     created_at: str
+#     groups: List[Group]  # Список строк для групп
+#     passwords: List[Password]  # Список строк для паролей
+#
+#     class Config:
+#         orm_mode = True
 
 class GroupAll(BaseModel):
     groups: List[Group]

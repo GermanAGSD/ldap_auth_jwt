@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import text
 from sqlalchemy.sql.sqltypes import TIMESTAMP
@@ -19,6 +19,20 @@ class Users(Base):
     # Связь с группами
     groups = relationship("Group", secondary="user_group_association", back_populates="users")
 
+
+class UserPasswordShare(Base):
+    __tablename__ = "user_password_share"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    password_id = Column(Integer, ForeignKey("passwords.id"), nullable=False)
+
+    granted_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # кто выдал доступ (superuser)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text("now()"))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "password_id", name="uq_user_password_share"),
+    )
 class UserGroupAssociation(Base):
     __tablename__ = "user_group_association"
     id = Column(Integer, primary_key=True, index=True)
