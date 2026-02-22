@@ -1,8 +1,8 @@
 version: "3"
 services:
-  ldap_auth_jwt:
+  password_manager:
     build: .
     ports:
       - 6200:6200
     volumes:
-      - ./:/usr/src/app
+      - ./manager_password:/usr/src/app

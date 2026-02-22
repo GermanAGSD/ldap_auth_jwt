@@ -1,16 +1,6 @@
 import uvicorn
-from fastapi.security import OAuth2PasswordBearer
-from ldap3 import Server, Connection, ALL, SIMPLE, SUBTREE
-from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from fastapi import FastAPI, Depends, Form, HTTPException, Response, Cookie, status
+from fastapi import FastAPI, status
 from app import schemas, models
-from app import database
-from sqlalchemy.orm import Session
-import secrets
-import hashlib
-from passlib.context import CryptContext
-from fastapi.security.oauth2 import OAuth2PasswordRequestForm
 from app.routers import ldap_auth
 from app.database import engine
 from fastapi.middleware.cors import CORSMiddleware
