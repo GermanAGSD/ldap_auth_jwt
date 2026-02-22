@@ -5,4 +5,4 @@ services:
     ports:
       - 6200:6200
     volumes:
-      - ./manager_password:/usr/src/app
+      - ./:/usr/src/app
